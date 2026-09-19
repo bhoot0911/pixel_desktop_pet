@@ -1,8 +1,5 @@
-Absolutely bhen. Let's make it **actually polished** — something that looks good on GitHub portfolio-wise, while still feeling like *your* project rather than corporate/AI-generated fluff.
+# Markdown
 
-**One single block. Copy everything inside:**
-
-```markdown
 # 🐾 Pixel Desktop Pet
 
 > A lightweight pixel-art desktop companion designed to bring interactive virtual pets to your screen.
@@ -11,7 +8,7 @@ Absolutely bhen. Let's make it **actually polished** — something that looks go
 
 ---
 
-## ✨ Overview
+##  Overview
 
 The idea behind Pixel Desktop Pet is simple: create a small virtual companion that can live alongside you while you work, study, or browse.
 
@@ -33,15 +30,15 @@ Burrito is the panda companion. With a calmer personality and a cute pixel-art d
 
 - 🐱 Interactive cat companion — Cosmos
 - 🐼 Interactive panda companion — Burrito
-- 🎨 Pixel-art character design
-- ✨ Animated character interactions
-- 🖱️ Interactive desktop experience
-- ⚡ Lightweight and responsive interface
-- 🧩 Modular design for adding future pets and features
+- Pixel-art character design
+- Animated character interactions
+- Interactive desktop experience
+- Lightweight and responsive interface
+- Modular design for adding future pets and features
 
 ---
 
-## 🛠️ Technologies
+##  Technologies
 
 | Technology | Purpose |
 |------------|---------|
@@ -83,7 +80,7 @@ Open `index.html` directly in your browser or use a local development server for
 
 ---
 
-## 🔮 Future Development
+## Future Development
 
 The project is designed to be expandable. Possible future improvements include:
 
