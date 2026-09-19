@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>2D Pixel Art Desktop Pet (Cat & Panda)</title>
+<style>
+  * {
+    box-sizing: border-box;
+    user-select: none;
+    margin: 0;
+    padding: 0;
+  }
+  body {
+    background-color: #12141d;
+    background-image: radial-gradient(#262c3a 1px, transparent 1px);
+    background-size: 24px 24px;
+    color: #e6edf3;
+    font-family: 'Courier New', Courier, monospace;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Header & Control Panel */
+  .top-bar {
+    position: absolute;
+    top: 16px;
+    display: flex;
+    gap: 12px;
+    background: #1c212e;
+    padding: 10px 18px;
+    border-radius: 12px;
+    border: 2px solid #30363d;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    z-index: 100;
+  }
+  .btn {
+    background: #2d3344;
+    color: #e6edf3;
+    border: 1px solid #444c5e;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-family: inherit;
+    font-weight: bold;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .btn:hover {
+    background: #3b4256;
+    border-color: #f7a046;
+    color: #ffffff;
+  }
+  .btn.active {
+    background: #f7a046;
+    color: #12141d;
+    border-color: #f7a046;
+  }
+
+  /* Pet Container & Canvas */
+  #pet-container {
+    position: absolute;
+    width: 320px;
+    height: 320px;
+    cursor: grab;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  #pet-container:active {
+    cursor: grabbing;
+  }
+
+  canvas {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    width: 300px;
+    height: 300px;
+  }
+
+  /* Speech Bubble */
+  .speech-bubble {
+    position: absolute;
+    top: -10px;
+    background: #fffdf5;
+    color: #1c1e24;
+    border: 2px solid #1c1e24;
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: bold;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+    white-space: nowrap;
+    z-index: 50;
+  }
+  .speech-bubble::after {
+    content: '';
+    position: absolute;
+    bottom: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-width: 8px 8px 0;
+    border-style: solid;
+    border-color: #fffdf5 transparent;
+    display: block;
+    width: 0;
+  }
+  .speech-bubble.visible {
+    opacity: 1;
+  }
+
+  /* Floating Particles */
+  .particle {
+    position: absolute;
+    font-size: 20px;
+    pointer-events: none;
+    animation: floatUp 1.5s ease-out forwards;
+    z-index: 60;
+  }
+  @keyframes floatUp {
+    0% { opacity: 1; transform: translateY(0) scale(1); }
+    100% { opacity: 0; transform: translateY(-50px) scale(1.3); }
+  }
+
+  .instructions {
+    position: absolute;
+    bottom: 20px;
+    color: #8b949e;
+    font-size: 13px;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <button class="btn active" id="btn-cat" onclick="switchPet('cat')">🐱 Cat</button>
+  <button class="btn" id="btn-panda" onclick="switchPet('panda')">🐼 Panda</button>
+  <button class="btn" onclick="triggerAction('pet')">❤️ Pet</button>
+  <button class="btn" onclick="triggerAction('feed')">🍱 Feed</button>
+  <button class="btn" onclick="triggerAction('play')">🎾 Play</button>
+  <button class="btn" onclick="triggerAction('sleep')">💤 Sleep</button>
+</div>
+
+<div id="pet-container">
+  <div class="speech-bubble" id="speech-bubble">hello 👀</div>
+  <canvas id="petCanvas" width="48" height="48"></canvas>
+</div>
+
+<div class="instructions">
+  💡 <b>Drag</b> to move pet | <b>Click</b> to pet (❤️) | <b>Double Click</b> to play (✨)
+</div>
+
+<script>
+// --- Audio Synthesizer (Purr & Play sounds) ---
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+function playPurr() {
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(45, audioCtx.currentTime);
+  gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.6);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start();
+  osc.stop(audioCtx.currentTime + 0.6);
+}
+
+// --- Pixel Art Matrix Drawer ---
+const canvas = document.getElementById('petCanvas');
+const ctx = canvas.getContext('2d');
+const container = document.getElementById('pet-container');
+const bubble = document.getElementById('speech-bubble');
+
+let petType = 'cat';
+let currentState = 'IDLE';
+let frameIndex = 0;
+let frameTicks = 0;
+let direction = 1;
+let posX = window.innerWidth / 2 - 160;
+let posY = window.innerHeight / 2 - 160;
+
+container.style.left = posX + 'px';
+container.style.top = posY + 'px';
+
+// Palette Definitions
+const CAT_PALETTE = {
+  'O': '#2B1E1A', 'B': '#F7A046', 'S': '#D87B26', 'W': '#FFF6E5',
+  'P': '#FF85A1', 'E': '#1B2A4A', 'H': '#FFFFFF', 'R': '#FF99A8',
+  'T': '#BF5C14', 'K': '#6B493B'
+};
+const PANDA_PALETTE = {
+  'O': '#161B22', 'W': '#F5F6F8', 'S': '#D0D7DE', 'B': '#24292F',
+  'P': '#FF85A1', 'E': '#0D1117', 'H': '#FFFFFF', 'G': '#38B000'
+};
+
+function drawPixelMatrix(matrix, palette, offsetX=0, offsetY=0, flip=false) {
+  for (let y = 0; y < matrix.length; y++) {
+    const row = matrix[y];
+    for (let x = 0; x < row.length; x++) {
+      const char = row[x];
+      if (char !== ' ' && palette[char]) {
+        ctx.fillStyle = palette[char];
+        let px = x + offsetX;
+        if (flip) px = 47 - px;
+        ctx.fillRect(px, y + offsetY, 1, 1);
+      }
+    }
+  }
+}
+
+// --- Frame Rendering ---
+function renderFrame() {
+  ctx.clearRect(0, 0, 48, 48);
+  const palette = petType === 'cat' ? CAT_PALETTE : PANDA_PALETTE;
+  const flip = direction === -1;
+  const yOff = (currentState === 'IDLE' && (frameIndex % 2 === 1)) ? 1 : (currentState === 'SLEEP' ? 2 : 0);
+
+  if (petType === 'cat') {
+    // Ears
+    drawPixelMatrix([
+      "  OOO        OOO  ",
+      " OPOOO      OPOOO ",
+      "OPPPOOO    OPPPOOO",
+      "OPPPPOO    OPPPPOO",
+      "OBBBBBBOOOOBBBBBBO"
+    ], palette, 15, 8 + yOff, flip);
+
+    // Head Base
+    drawPixelMatrix([
+      "   OOOOOOOOOOOOOO   ",
+      "  OBBBBBBBBBBBBBBO  ",
+      " OBBBBBTBBBBTBBBBBO ",
+      "OBBBBBBBBBBBBBBBBBBO",
+      "OBBBBBBBBBBBBBBBBBBO",
+      "OBBBWWWWWWWWWWWWBBBO",
+      "OBBBWWWWWWWWWWWWBBBO",
+      " OBBBWWWWWWWWWWBBBO ",
+      "  OOOOOOOOOOOOOOOO  "
+    ], palette, 14, 12 + yOff, flip);
+
+    // Whiskers
+    drawPixelMatrix(["K K ", " K  "], palette, 11, 16 + yOff, flip);
+    drawPixelMatrix([" K K", "  K "], palette, 33, 16 + yOff, flip);
+
+    // Eyes
+    if (currentState === 'SLEEP') {
+      drawPixelMatrix([" OOOO    OOOO "], palette, 17, 15 + yOff, flip);
+    } else if (currentState === 'HAPPY' || currentState === 'EXCITED') {
+      drawPixelMatrix(["  OO      OO  ", " O  O    O  O "], palette, 18, 14 + yOff, flip);
+      drawPixelMatrix(["RR", "RR"], palette, 16, 17 + yOff, flip);
+      drawPixelMatrix(["RR", "RR"], palette, 30, 17 + yOff, flip);
+    } else {
+      drawPixelMatrix([
+        " OOOO    OOOO ",
+        "OHEEEO  OHEEEO",
+        "OEEEEO  OEEEEO",
+        " OOOO    OOOO "
+      ], palette, 17, 14 + yOff, flip);
+      drawPixelMatrix(["RR", "RR"], palette, 16, 17 + yOff, flip);
+      drawPixelMatrix(["RR", "RR"], palette, 30, 17 + yOff, flip);
+    }
+
+    // Nose & Mouth
+    drawPixelMatrix([" P "], palette, 22, 16 + yOff, flip);
+    drawPixelMatrix([currentState === 'HAPPY' ? "OPO" : "O O"], palette, 22, 17 + yOff, flip);
+
+    // Body & Tail
+    if (currentState === 'SLEEP') {
+      drawPixelMatrix([
+        "    OOOOOOOOOOOO    ",
+        "   OBBBBBBBBBBBBO   ",
+        "  OBBWWWWWWBBBBBBO  ",
+        " OBBWWWWWWWWBBBBBBO ",
+        "  OOOOOOOOOOOOOOOO  "
+      ], palette, 14, 22 + yOff, flip);
+    } else if (currentState === 'SIT') {
+      drawPixelMatrix([
+        "   OOOOOOOOOO   ", "  OWWBBBBBBWWO  ", " OWWWWBBBBWWWO ",
+        " OWWWWBBBBWWWO ", " OWWWWWWWWWWWO ", "  OOOOOOOOOOO  "
+      ], palette, 17, 20, flip);
+      drawPixelMatrix(["  OOOOOOOO  ", " OWWWWWWWO "], palette, 19, 25, flip);
+    } else {
+      drawPixelMatrix([
+        "   OOOOOOOOOO   ", "  OWWBBBBBBWWO  ", " OWWWWBBBBWWWO ",
+        " OWWWWBBBBWWWO ", "  OWWWWWWWWWWO  ", "   OOOOOOOOOO   "
+      ], palette, 17, 20 + yOff, flip);
+      const pawOffset = (currentState === 'WALK' && frameIndex % 2 === 0) ? " OWO   OO " : " OO   OWO ";
+      drawPixelMatrix([pawOffset, "OWWO  OWWO"], palette, 19, 25 + yOff, flip);
+      drawPixelMatrix(["   OO", "  OB ", " OBO ", "OO   "], palette, 28, 19 + yOff, flip);
+    }
+
+  } else { // Panda
+    drawPixelMatrix([
+      "  OOOO     OOOO  ", " OBBBBO   OBBBBO ",
+      "OBBBBBBO OBBBBBBO", " OOOOOOO  OOOOOOO "
+    ], palette, 15, 7 + yOff, flip);
+
+    drawPixelMatrix([
+      "   OOOOOOOOOOOOOO   ", "  OWWWWWWWWWWWWWWO  ",
+      " OWWWWWWWWWWWWWWWWO ", "OWWWWWWWWWWWWWWWWWWO",
+      "OWWWWWWWWWWWWWWWWWWO", "OWWWWWWWWWWWWWWWWWWO",
+      " OWWWWWWWWWWWWWWWWO ", "  OOOOOOOOOOOOOOOO  "
+    ], palette, 14, 11 + yOff, flip);
+
+    if (currentState === 'SLEEP') {
+      drawPixelMatrix([" OBBBO    OBBBO ", "OBBBBBO  OBBBBBO", " OBBBO    OBBBO "], palette, 16, 14 + yOff, flip);
+    } else {
+      drawPixelMatrix([
+        " OBBBO    OBBBO ", "OBHEBBO  OBHEBBO",
+        "OBHEBBO  OBHEBBO", " OBBBO    OBBBO "
+      ], palette, 16, 13 + yOff, flip);
+      drawPixelMatrix(["PP", "PP"], palette, 15, 16 + yOff, flip);
+      drawPixelMatrix(["PP", "PP"], palette, 29, 16 + yOff, flip);
+    }
+
+    drawPixelMatrix([" B "], palette, 22, 15 + yOff, flip);
+    drawPixelMatrix([currentState === 'EAT' ? "OPO" : "OBO"], palette, 22, 16 + yOff, flip);
+    if (currentState === 'EAT') drawPixelMatrix(["GG", " G"], palette, 25, 16 + yOff, flip);
+
+    if (currentState === 'ROLL') {
+      ctx.save();
+      ctx.translate(24, 24);
+      ctx.rotate((frameIndex % 4) * Math.PI / 2);
+      ctx.translate(-24, -24);
+      drawPixelMatrix([
+        "    OOOOOOOO    ", "   OBBBBBBBBO   ", "  OBBWWWWWWBBO  ",
+        " OBBWWWWWWWWBBO ", " OBBWWWWWWWWBBO ", "  OBBWWWWWWBBO  ",
+        "   OBBBBBBBBO   ", "    OOOOOOOO    "
+      ], palette, 16, 19, false);
+      ctx.restore();
+    } else {
+      drawPixelMatrix([
+        "   OOOOOOOOOO   ", "  OBBWWWWWWBBO  ", " OBBBWWWWWWBBBO ",
+        " OBBBWWWWWWBBBO ", "  OWWWWWWWWWWO  ", "   OOOOOOOOOO   "
+      ], palette, 17, 19 + yOff, flip);
+      drawPixelMatrix(["  OO    OO  ", " OBBO  OBBO "], palette, 19, 24 + yOff, flip);
+    }
+  }
+}
+
+// --- Animation Loop ---
+setInterval(() => {
+  frameTicks++;
+  if (frameTicks % 15 === 0) {
+    frameIndex++;
+    if (currentState === 'WALK' || currentState === 'ROLL') {
+      posX += direction * 12;
+      if (posX < 50) { posX = 50; direction = 1; }
+      if (posX > window.innerWidth - 370) { posX = window.innerWidth - 370; direction = -1; }
+      container.style.left = posX + 'px';
+    }
+    renderFrame();
+  }
+}, 16);
+
+// --- Interactions ---
+function showBubble(msg) {
+  bubble.textContent = msg;
+  bubble.classList.add('visible');
+  setTimeout(() => bubble.classList.remove('visible'), 2500);
+}
+
+function spawnParticle(emoji) {
+  const p = document.createElement('div');
+  p.className = 'particle';
+  p.textContent = emoji;
+  p.style.left = (container.offsetLeft + 140) + 'px';
+  p.style.top = (container.offsetTop + 40) + 'px';
+  document.body.appendChild(p);
+  setTimeout(() => p.remove(), 1500);
+}
+
+function switchPet(type) {
+  petType = type;
+  document.getElementById('btn-cat').classList.toggle('active', type === 'cat');
+  document.getElementById('btn-panda').classList.toggle('active', type === 'panda');
+  showBubble(type === 'cat' ? "miau! 🐱" : "munch! 🐼");
+  renderFrame();
+}
+
+function triggerAction(action) {
+  if (action === 'pet') {
+    currentState = 'HAPPY';
+    playPurr();
+    spawnParticle('❤️');
+    showBubble(petType === 'cat' ? "purrrr... ❤️" : "so cozy! ❤️");
+  } else if (action === 'feed') {
+    currentState = 'EAT';
+    spawnParticle('✨');
+    showBubble(petType === 'cat' ? "yum yum! 🐟" : "bamboo break! 🎋");
+  } else if (action === 'play') {
+    currentState = petType === 'panda' ? 'ROLL' : 'EXCITED';
+    spawnParticle('✨');
+    showBubble("play? ✨");
+  } else if (action === 'sleep') {
+    currentState = 'SLEEP';
+    spawnParticle('💤');
+    showBubble("zzz...");
+  }
+  setTimeout(() => { if (currentState !== 'SLEEP') currentState = 'IDLE'; }, 3000);
+}
+
+// Drag & Drop
+let isDragging = false, dragX = 0, dragY = 0;
+container.addEventListener('mousedown', (e) => {
+  isDragging = true;
+  dragX = e.clientX - container.offsetLeft;
+  dragY = e.clientY - container.offsetTop;
+});
+window.addEventListener('mousemove', (e) => {
+  if (isDragging) {
+    posX = e.clientX - dragX;
+    posY = e.clientY - dragY;
+    container.style.left = posX + 'px';
+    container.style.top = posY + 'px';
+  }
+});
+window.addEventListener('mouseup', () => isDragging = false);
+
+container.addEventListener('click', () => triggerAction('pet'));
+container.addEventListener('dblclick', () => triggerAction('play'));
+
+renderFrame();
+</script>
+</body>
+</html>
